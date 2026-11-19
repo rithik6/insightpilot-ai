@@ -1,0 +1,43 @@
+# Local configuration and Python environments
+.env
+.env.*
+!/.env.example
+.venv/
+venv/
+
+# Python caches, test output, and build artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+/build/
+/dist/
+*.egg-info/
+
+# Runtime output, traces, and reports
+logs/
+*.log
+*.log.*
+*.trace
+*.pdf
+tmp/
+.temp/
+
+# Local databases, backups, and datasets
+backups/
+*.dump
+*.sql.gz
+*.sqlite
+*.sqlite3
+/data/postgres/
+/data/redis/
+/data/private/
+/data/imports/
+/data/generated/
+
+# OS metadata
+.DS_Store
+Thumbs.db
