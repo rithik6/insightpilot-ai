@@ -9,7 +9,10 @@ COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --locked --no-dev
 
 FROM python-base AS runtime
-ENV PATH="/opt/venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    INSIGHTPILOT_BIND_HOST=0.0.0.0
 RUN groupadd --gid 10001 insightpilot \
     && useradd --uid 10001 --gid 10001 --no-create-home insightpilot
 WORKDIR /app
@@ -17,4 +20,4 @@ COPY --from=dependencies /opt/venv /opt/venv
 COPY app/ ./app/
 USER 10001:10001
 EXPOSE 8000
-CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "app"]

@@ -10,7 +10,7 @@ On Windows, use Ubuntu WSL for development. Open the repository from WSL, such a
 export PATH="$HOME/.local/bin:$PATH"
 export UV_PROJECT_ENVIRONMENT="$HOME/.local/share/insightpilot-ai/venv"
 uv sync --locked
-uv run --locked uvicorn app.main:create_app --factory
+uv run --locked python -m app
 ```
 
 uv uses Python 3.12 from `.python-version` and syncs dependencies from `uv.lock`.
@@ -18,6 +18,8 @@ uv uses Python 3.12 from `.python-version` and syncs dependencies from `uv.lock`
 `GET http://127.0.0.1:8000/api/v1/health` returns `{"status":"ok"}` when the API is running. This liveness check covers the API process. Interactive API docs are available at `/docs` in development.
 
 Copy `.env.example` to `.env` to configure local settings. `INSIGHTPILOT_ENVIRONMENT` defaults to `development` and also accepts `test`, `staging`, and `production`. Process environment variables override `.env` values.
+
+The standalone API binds to `127.0.0.1:8000` by default. Set `INSIGHTPILOT_BIND_PORT` to change its port when running outside Compose.
 
 ## Run the Docker stack
 
@@ -30,6 +32,12 @@ curl --fail http://127.0.0.1:8000/api/v1/ready
 ```
 
 Liveness checks the API process. Readiness verifies PostgreSQL and Redis connections and returns HTTP 503 if either dependency is unavailable. The RQ worker listens on the `default` queue. PostgreSQL and Redis use named volumes that persist across `docker compose down` and subsequent startups.
+
+## Runtime logs
+
+The API and worker emit JSON logs to stdout. Set `INSIGHTPILOT_LOG_LEVEL` to `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. API responses include a server-generated `X-Request-ID` that matches the request log. Each request record includes the status and duration. Events and fields use an allowlist so request contents, credentials, job arguments, and tracebacks stay out of logs.
+
+Use `docker compose logs app worker` to inspect events. Docker rotates logs for each service at 10 MB and retains up to three files per container.
 
 ## Verify changes
 

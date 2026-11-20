@@ -1,5 +1,7 @@
+import json
 import logging
 from unittest.mock import MagicMock
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -8,6 +10,7 @@ from pydantic import SecretStr
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.core.config import Environment, Settings
+from app.core.logging import JsonLogFormatter
 from app.main import create_app
 from app.services import readiness
 
@@ -18,6 +21,35 @@ def test_health_endpoint() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_request_ids_are_generated_and_match_the_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    supplied_id = "a" * 32
+    private_value = "test-private-request-value"
+    headers = {"X-Request-ID": supplied_id, "Authorization": private_value}
+    with (
+        caplog.at_level(logging.INFO, logger="app.main"),
+        TestClient(create_app(Settings(environment="test"))) as client,
+    ):
+        success = client.get(f"/api/v1/health?value={private_value}", headers=headers)
+        missing = client.get(f"/{private_value}", headers=headers)
+
+    request_ids = [success.headers["X-Request-ID"], missing.headers["X-Request-ID"]]
+    assert len({supplied_id, *request_ids}) == 3
+    assert all(UUID(request_id).version == 4 for request_id in request_ids)
+
+    formatter = JsonLogFormatter()
+    formatted = [formatter.format(record) for record in caplog.records]
+    assert len(formatted) == 2
+    for line, response in zip(formatted, [success, missing], strict=True):
+        assert private_value not in line
+        payload = json.loads(line)
+        assert payload["event"] == "http_request"
+        assert payload["request_id"] == response.headers["X-Request-ID"]
+        assert payload["status_code"] == response.status_code
+        assert payload["duration_ms"] >= 0
 
 
 def test_readiness_requires_service_configuration() -> None:
@@ -101,5 +133,12 @@ def test_unexpected_error_returns_safe_response_and_log(
 
     assert response.status_code == 500
     assert response.json() == {"detail": "Internal server error."}
-    assert caplog.messages == ["Unhandled HTTP request error"]
-    assert all(record.exc_info is None for record in caplog.records)
+    assert len(caplog.records) == 1
+    record = caplog.records[0]
+    payload = json.loads(JsonLogFormatter().format(record))
+    assert payload["event"] == "http_request_failed"
+    assert payload["level"] == "ERROR"
+    assert payload["status_code"] == 500
+    assert payload["request_id"] == response.headers["X-Request-ID"]
+    assert private_detail not in str(payload)
+    assert record.exc_info is None
