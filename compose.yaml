@@ -1,0 +1,82 @@
+name: insightpilot-ai
+
+x-runtime: &runtime
+  image: ${COMPOSE_PROJECT_NAME}-runtime:local
+  init: true
+  restart: unless-stopped
+  mem_limit: 512m
+
+x-application-environment: &application-environment
+  INSIGHTPILOT_ENVIRONMENT: ${INSIGHTPILOT_ENVIRONMENT:-development}
+  INSIGHTPILOT_REDIS_URL: redis://redis:6379/0
+
+services:
+  app:
+    <<: *runtime
+    build: .
+    environment:
+      <<: *application-environment
+      INSIGHTPILOT_POSTGRES_HOST: postgres
+      INSIGHTPILOT_POSTGRES_PASSWORD: ${INSIGHTPILOT_POSTGRES_PASSWORD:?Set a password in .env}
+    ports:
+      - "127.0.0.1:${INSIGHTPILOT_API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/v1/ready', timeout=6).close()"]
+      interval: 10s
+      timeout: 7s
+      retries: 5
+      start_period: 10s
+
+  worker:
+    <<: *runtime
+    pull_policy: never
+    command: ["python", "-m", "app.workers.runner"]
+    environment: *application-environment
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.workers.runner import is_worker_registered; raise SystemExit(0 if is_worker_registered() else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  postgres:
+    image: postgres:17.12-bookworm@sha256:837bed18782820fe967067cb5328b02b0d9992c1be9a37ee0c9c492cfc03af3b
+    environment:
+      POSTGRES_DB: insightpilot
+      POSTGRES_USER: insightpilot
+      POSTGRES_PASSWORD: ${INSIGHTPILOT_POSTGRES_PASSWORD:?Set a password in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:8.8.4-alpine@sha256:1273af45b299d2b8b60d0e400d90aa6c2c5b1794f01d6a7ca60ff3ba6e65efb5
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

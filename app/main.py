@@ -16,6 +16,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="InsightPilot AI",
         openapi_url="/openapi.json" if settings.environment == "development" else None,
     )
+    app.state.settings = settings
     app.include_router(health_router, prefix="/api/v1")
 
     @app.middleware("http")

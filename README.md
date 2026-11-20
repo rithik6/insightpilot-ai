@@ -19,6 +19,18 @@ uv uses Python 3.12 from `.python-version` and syncs dependencies from `uv.lock`
 
 Copy `.env.example` to `.env` to configure local settings. `INSIGHTPILOT_ENVIRONMENT` defaults to `development` and also accepts `test`, `staging`, and `production`. Process environment variables override `.env` values.
 
+## Run the Docker stack
+
+From Ubuntu WSL, set `INSIGHTPILOT_POSTGRES_PASSWORD` in `.env` before the first startup. Compose publishes the API on localhost. Set `INSIGHTPILOT_API_PORT` in `.env` to use a different host port if `8000` is occupied.
+
+```sh
+docker compose up --build --wait
+curl --fail http://127.0.0.1:8000/api/v1/health
+curl --fail http://127.0.0.1:8000/api/v1/ready
+```
+
+Liveness checks the API process. Readiness verifies PostgreSQL and Redis connections and returns HTTP 503 if either dependency is unavailable. The RQ worker listens on the `default` queue. PostgreSQL and Redis use named volumes that persist across `docker compose down` and subsequent startups.
+
 ## Verify changes
 
 ```sh

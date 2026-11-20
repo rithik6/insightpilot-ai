@@ -5,7 +5,10 @@ description = "Chat-first business analytics and reporting for synthetic e-comme
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.165.0",
+    "psycopg[binary]>=3.3.9",
     "pydantic-settings>=2.16.3",
+    "redis>=8.1.0",
+    "rq>=3.0.0",
     "uvicorn>=0.54.0",
 ]
 
