@@ -2,7 +2,30 @@
 
 InsightPilot AI is a chat-first business analytics and reporting project for a synthetic e-commerce dataset. The V1 design uses Python and PostgreSQL to calculate 25 approved metrics. A bounded LangGraph workflow will investigate questions using those metrics, and verified results will power interactive charts and downloadable PDF reports.
 
-The project is in Phase 1. The FastAPI service and health endpoint are planned for Brick 1.2.
+## Run locally
+
+On Windows, use Ubuntu WSL for development. Open the repository from WSL, such as `/mnt/d/insightpilotAI`, and use [uv](https://docs.astral.sh/uv/getting-started/installation/) installed inside WSL. Keep the virtual environment on the Linux filesystem for this checkout. Set `UV_PROJECT_ENVIRONMENT` in each shell you use for the project.
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+export UV_PROJECT_ENVIRONMENT="$HOME/.local/share/insightpilot-ai/venv"
+uv sync --locked
+uv run --locked uvicorn app.main:create_app --factory
+```
+
+uv uses Python 3.12 from `.python-version` and syncs dependencies from `uv.lock`.
+
+`GET http://127.0.0.1:8000/api/v1/health` returns `{"status":"ok"}` when the API is running. This liveness check covers the API process. Interactive API docs are available at `/docs` in development.
+
+Copy `.env.example` to `.env` to configure local settings. `INSIGHTPILOT_ENVIRONMENT` defaults to `development` and also accepts `test`, `staging`, and `production`. Process environment variables override `.env` values.
+
+## Verify changes
+
+```sh
+uv run --locked pytest -q
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+```
 
 ## Branch workflow
 

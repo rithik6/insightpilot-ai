@@ -1,0 +1,36 @@
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from app.core.config import Settings
+
+
+def test_settings_default_to_development(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("INSIGHTPILOT_ENVIRONMENT", raising=False)
+
+    assert Settings(_env_file=None).environment == "development"
+
+
+def test_settings_load_dotenv_and_prefer_the_process_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("INSIGHTPILOT_ENVIRONMENT", raising=False)
+    (tmp_path / ".env").write_text(
+        "INSIGHTPILOT_ENVIRONMENT=staging\n", encoding="utf-8"
+    )
+
+    assert Settings().environment == "staging"
+
+    monkeypatch.setenv("INSIGHTPILOT_ENVIRONMENT", "production")
+    assert Settings().environment == "production"
+
+
+def test_settings_reject_an_unknown_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("INSIGHTPILOT_ENVIRONMENT", "unknown")
+
+    with pytest.raises(ValidationError, match="environment"):
+        Settings(_env_file=None)

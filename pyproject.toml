@@ -1,0 +1,21 @@
+[project]
+name = "insightpilot-ai"
+version = "0.1.0"
+description = "Chat-first business analytics and reporting for synthetic e-commerce data"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.165.0",
+    "pydantic-settings>=2.16.3",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.0.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.6",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
