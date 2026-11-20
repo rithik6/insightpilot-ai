@@ -47,6 +47,8 @@ uv run --locked ruff check .
 uv run --locked ruff format --check .
 ```
 
+GitHub Actions runs these checks, validates the lockfile, scans the checked-out Git history for secrets, and builds and starts all four services. Run the same isolated Compose smoke test from WSL with `bash scripts/smoke_compose.sh`. The test uses port `18016` by default and accepts `INSIGHTPILOT_API_PORT` if you need another port.
+
 ## Branch workflow
 
 | Branch | Purpose |
