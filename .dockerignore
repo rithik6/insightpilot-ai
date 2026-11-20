@@ -1,0 +1,9 @@
+**
+!.python-version
+!pyproject.toml
+!uv.lock
+!app/
+!app/**
+**/.env*
+**/__pycache__/
+**/*.py[cod]

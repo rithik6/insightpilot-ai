@@ -1,10 +1,15 @@
 import logging
+from unittest.mock import MagicMock
 
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.core.config import Environment, Settings
 from app.main import create_app
+from app.services import readiness
 
 
 def test_health_endpoint() -> None:
@@ -13,6 +18,54 @@ def test_health_endpoint() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_readiness_requires_service_configuration() -> None:
+    settings = Settings(environment="test", postgres_host=None, redis_url=None)
+
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/api/v1/health").status_code == 200
+        response = client.get("/api/v1/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Dependencies unavailable."}
+
+
+@pytest.mark.parametrize("unavailable", [None, "postgres", "redis"])
+def test_readiness_checks_both_services(
+    monkeypatch: pytest.MonkeyPatch, unavailable: str | None
+) -> None:
+    settings = Settings(
+        environment="test",
+        postgres_host="postgres",
+        postgres_password=SecretStr("test-password"),
+        redis_url=SecretStr("redis://redis:6379/0"),
+    )
+    connect_postgres = MagicMock()
+    connect_redis = MagicMock()
+    redis = connect_redis.return_value.__enter__.return_value
+    redis.ping.return_value = True
+    if unavailable == "postgres":
+        connect_postgres.side_effect = psycopg.OperationalError(
+            "private database detail"
+        )
+    if unavailable == "redis":
+        redis.ping.side_effect = RedisConnectionError("private redis detail")
+    monkeypatch.setattr(readiness.psycopg, "connect", connect_postgres)
+    monkeypatch.setattr(readiness, "open_redis_probe", connect_redis)
+
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/api/v1/ready")
+
+    if unavailable is None:
+        assert response.status_code == 200
+        assert response.json() == {"status": "ready"}
+        postgres = connect_postgres.return_value.__enter__.return_value
+        postgres.execute.assert_called_once_with("SELECT 1")
+        redis.ping.assert_called_once_with()
+    else:
+        assert response.status_code == 503
+        assert response.json() == {"detail": "Dependencies unavailable."}
 
 
 def test_openapi_is_available_in_development() -> None:

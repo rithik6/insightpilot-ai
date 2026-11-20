@@ -1,5 +1,6 @@
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["development", "test", "staging", "production"]
@@ -15,3 +16,8 @@ class Settings(BaseSettings):
     )
 
     environment: Environment = "development"
+    postgres_host: str | None = None
+    postgres_database: str = "insightpilot"
+    postgres_user: str = "insightpilot"
+    postgres_password: SecretStr | None = None
+    redis_url: SecretStr | None = None
