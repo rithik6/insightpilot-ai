@@ -47,6 +47,8 @@ uv run --locked ruff check .
 uv run --locked ruff format --check .
 ```
 
+GitHub Actions runs these checks, validates the lockfile, scans the checked-out Git history for secrets, and builds and starts all four services. Run the same isolated Compose smoke test from WSL with `bash scripts/smoke_compose.sh`. The test uses port `18016` by default and accepts `INSIGHTPILOT_API_PORT` if you need another port.
+
 ## Branch workflow
 
 | Branch | Purpose |
@@ -55,10 +57,10 @@ uv run --locked ruff format --check .
 | `development` | Integration branch for reviewed and tested changes. |
 | `feature/<brick>` or `fix/<issue>` | Short-lived branches created from `development` and merged back by pull request. |
 
-When the GitHub repository is connected, protect `main` and `development` by requiring pull requests and an approving review, blocking force pushes and deletion, and applying the rules to administrators. Require the applicable CI status checks once the workflows are available. [GitHub branch protection documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
+GitHub requires pull requests and passing CI on `main` and `development`. The solo maintainer can merge pull requests into `development` after CI passes. Production releases into `main` also need an approving review. Both branches block force pushes and branch deletion, with protection enforced for administrators. [GitHub branch protection documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
 
 ## Pull requests
 
-Keep each pull request focused on one implementation brick or fix. Use the [pull request template](.github/pull_request_template.md) to record the change, checks actually run, and any checks still pending. Merge after review and the applicable CI checks pass.
+Keep each pull request focused on one implementation brick or fix. Use the [pull request template](.github/pull_request_template.md) to record the change, checks actually run, and any checks still pending. Review the diff and the CI results before merging.
 
 Before committing, review `git status --short` and `git diff --cached --name-only`. Keep credentials in an ignored `.env` file. Keep runtime logs, generated reports, database dumps, and private data out of Git. Commit only deliberately selected synthetic fixtures.

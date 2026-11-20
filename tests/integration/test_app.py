@@ -15,24 +15,20 @@ from app.main import create_app
 from app.services import readiness
 
 
-def test_health_endpoint() -> None:
-    with TestClient(create_app(Settings(environment="test"))) as client:
-        response = client.get("/api/v1/health")
+def test_health_endpoint(client: TestClient) -> None:
+    response = client.get("/api/v1/health")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
 def test_request_ids_are_generated_and_match_the_log(
-    caplog: pytest.LogCaptureFixture,
+    client: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:
     supplied_id = "a" * 32
     private_value = "test-private-request-value"
     headers = {"X-Request-ID": supplied_id, "Authorization": private_value}
-    with (
-        caplog.at_level(logging.INFO, logger="app.main"),
-        TestClient(create_app(Settings(environment="test"))) as client,
-    ):
+    with caplog.at_level(logging.INFO, logger="app.main"):
         success = client.get(f"/api/v1/health?value={private_value}", headers=headers)
         missing = client.get(f"/{private_value}", headers=headers)
 
@@ -52,12 +48,9 @@ def test_request_ids_are_generated_and_match_the_log(
         assert payload["duration_ms"] >= 0
 
 
-def test_readiness_requires_service_configuration() -> None:
-    settings = Settings(environment="test", postgres_host=None, redis_url=None)
-
-    with TestClient(create_app(settings)) as client:
-        assert client.get("/api/v1/health").status_code == 200
-        response = client.get("/api/v1/ready")
+def test_readiness_requires_service_configuration(client: TestClient) -> None:
+    assert client.get("/api/v1/health").status_code == 200
+    response = client.get("/api/v1/ready")
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Dependencies unavailable."}
