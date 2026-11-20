@@ -34,3 +34,20 @@ def test_settings_reject_an_unknown_environment(
 
     with pytest.raises(ValidationError, match="environment"):
         Settings(_env_file=None)
+
+
+def test_settings_load_runtime_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("INSIGHTPILOT_LOG_LEVEL", "WARNING")
+    monkeypatch.setenv("INSIGHTPILOT_BIND_PORT", "18014")
+
+    settings = Settings(environment="test", _env_file=None)
+
+    assert settings.log_level == "WARNING"
+    assert settings.bind_port == 18014
+
+
+def test_settings_reject_an_unknown_log_level(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("INSIGHTPILOT_LOG_LEVEL", "VERBOSE")
+
+    with pytest.raises(ValidationError, match="log_level"):
+        Settings(_env_file=None)
