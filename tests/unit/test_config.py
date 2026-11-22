@@ -51,3 +51,11 @@ def test_settings_reject_an_unknown_log_level(monkeypatch: pytest.MonkeyPatch) -
 
     with pytest.raises(ValidationError, match="log_level"):
         Settings(_env_file=None)
+
+
+@pytest.mark.parametrize(
+    "origin", ["*", "https://example.com/path", "https://user@example.com"]
+)
+def test_settings_reject_invalid_allowed_origins(origin: str) -> None:
+    with pytest.raises(ValidationError, match="allowed_origins"):
+        Settings(allowed_origins=[origin], _env_file=None)

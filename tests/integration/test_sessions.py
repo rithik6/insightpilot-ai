@@ -10,9 +10,13 @@ from app.core.config import Environment, Settings
 from app.db.models import AnonymousSession
 from app.main import create_app
 
+LOCAL_ORIGIN = {"Origin": "http://testserver"}
+
 
 def test_session_storage_unavailable(client: TestClient) -> None:
-    response = client.post("/api/v1/session")
+    response = client.post(
+        "/api/v1/session", headers={"Origin": "http://127.0.0.1:8000"}
+    )
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Session storage unavailable."}
@@ -23,13 +27,13 @@ def test_browser_reuses_session_and_database_stores_digest(
     database_settings: Settings, migrated_postgres_url: URL
 ) -> None:
     with TestClient(create_app(database_settings)) as browser:
-        first = browser.post("/api/v1/session")
-        second = browser.post("/api/v1/session")
+        first = browser.post("/api/v1/session", headers=LOCAL_ORIGIN)
+        second = browser.post("/api/v1/session", headers=LOCAL_ORIGIN)
 
     assert first.status_code == 201
     assert second.status_code == 200
     assert first.json() == second.json()
-    assert set(first.json()) == {"expires_at"}
+    assert set(first.json()) == {"expires_at", "csrf_token"}
     assert (
         first.headers["cache-control"] == second.headers["cache-control"] == "no-store"
     )
@@ -56,9 +60,10 @@ def test_browser_reuses_session_and_database_stores_digest(
 def test_invalid_cookie_creates_a_separate_session(database_settings: Settings) -> None:
     app = create_app(database_settings)
     with TestClient(app) as browser:
-        first = browser.post("/api/v1/session")
+        first = browser.post("/api/v1/session", headers=LOCAL_ORIGIN)
         second = browser.post(
-            "/api/v1/session", headers={"Cookie": "insightpilot_session=invalid"}
+            "/api/v1/session",
+            headers={**LOCAL_ORIGIN, "Cookie": "insightpilot_session=invalid"},
         )
 
     assert first.status_code == second.status_code == 201
@@ -79,8 +84,12 @@ def test_https_session_cookie_flags(
     with TestClient(
         create_app(database_settings), base_url="https://testserver"
     ) as browser:
-        first = browser.post("/api/v1/session")
-        second = browser.post("/api/v1/session")
+        first = browser.post(
+            "/api/v1/session", headers={"Origin": "https://testserver"}
+        )
+        second = browser.post(
+            "/api/v1/session", headers={"Origin": "https://testserver"}
+        )
 
     cookie = SimpleCookie(first.headers["set-cookie"])["__Host-insightpilot_session"]
     assert cookie["secure"] and cookie["httponly"]

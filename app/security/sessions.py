@@ -1,3 +1,4 @@
+import hmac
 import re
 from datetime import datetime
 from hashlib import sha256
@@ -22,6 +23,10 @@ def cookie_name(settings: Settings) -> str:
 
 def session_digest(token: str) -> bytes:
     return sha256(token.encode("ascii")).digest()
+
+
+def csrf_token(cookie: str) -> str:
+    return hmac.digest(cookie.encode("ascii"), b"insightpilot-csrf-v1", "sha256").hex()
 
 
 def find_active_session(
