@@ -12,7 +12,7 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import create_engine
-from sqlalchemy.engine import URL
+from sqlalchemy.engine import URL, Engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings
@@ -138,6 +138,17 @@ def migrated_postgres_url(postgres_url: URL) -> URL:
         Config("alembic.ini", attributes={"database_url": postgres_url}), "head"
     )
     return postgres_url
+
+
+@pytest.fixture
+def postgres_engine(migrated_postgres_url: URL) -> Iterator[Engine]:
+    engine = create_engine(
+        migrated_postgres_url, poolclass=NullPool, hide_parameters=True
+    )
+    try:
+        yield engine
+    finally:
+        engine.dispose()
 
 
 @pytest.fixture

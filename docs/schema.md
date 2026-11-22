@@ -82,3 +82,7 @@ The unique keys on `anonymous_sessions.token_hash`, `products.sku`, and `reports
 2. Run `alembic upgrade head` as a dedicated deployment command using environment-provided database settings. Use a schema-owner credential for migrations and scoped credentials for the application, importer, and analytics in deployed environments.
 3. Verify on disposable PostgreSQL 17. Confirm the 12 business and application tables and their keys, checks, and indexes. Exercise missing foreign keys, duplicate unique keys, invalid statuses and amounts, cross-conversation message links, cascade deletion, ledger detachment, and oversized or invalid report fields. Run `alembic check`, downgrade to base, then upgrade again. Test the importer's aggregate rules, repeated replacement, and rollback with real data in Phase 3.
 4. Use the initial downgrade on disposable databases only. For a deployment with saved data, prefer a forward fix. If a rollback requires removing the schema, restore a verified PostgreSQL backup together with the compatible application version.
+
+## Request transactions
+
+The API opens a pooled SQLAlchemy engine for its lifespan and closes it at shutdown. Each request gets its own database session. Repositories scope queries to the active owner and services control transaction boundaries. Session creation commits before the browser receives its cookie. History reads that span multiple queries use a repeatable-read snapshot. Failed writes roll back before the request returns a safe storage error, and connection resources return to the pool.
