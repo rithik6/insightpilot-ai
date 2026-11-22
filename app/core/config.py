@@ -20,9 +20,14 @@ class Settings(BaseSettings):
     log_level: LogLevel = "INFO"
     bind_host: str = "127.0.0.1"
     bind_port: int = Field(default=8000, ge=1, le=65535)
+    session_lifetime_days: int = Field(default=90, ge=1, le=365)
     postgres_host: str | None = None
     postgres_port: int = Field(default=5432, ge=1, le=65535)
     postgres_database: str = "insightpilot"
     postgres_user: str = "insightpilot"
     postgres_password: SecretStr | None = None
     redis_url: SecretStr | None = None
+
+    @property
+    def secure_session_cookie(self) -> bool:
+        return self.environment in {"staging", "production"}

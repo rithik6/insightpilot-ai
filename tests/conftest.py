@@ -138,3 +138,18 @@ def migrated_postgres_url(postgres_url: URL) -> URL:
         Config("alembic.ini", attributes={"database_url": postgres_url}), "head"
     )
     return postgres_url
+
+
+@pytest.fixture
+def database_settings(migrated_postgres_url: URL) -> Settings:
+    url = migrated_postgres_url
+    assert url.username and url.password and url.host and url.port and url.database
+    return Settings(
+        environment="test",
+        postgres_host=url.host,
+        postgres_port=url.port,
+        postgres_user=url.username,
+        postgres_password=SecretStr(url.password),
+        postgres_database=url.database,
+        _env_file=None,
+    )
