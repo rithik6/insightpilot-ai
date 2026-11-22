@@ -16,6 +16,7 @@ def dependencies_ready(settings: Settings) -> bool:
     try:
         with psycopg.connect(
             host=settings.postgres_host,
+            port=settings.postgres_port,
             dbname=settings.postgres_database,
             user=settings.postgres_user,
             password=settings.postgres_password.get_secret_value(),
