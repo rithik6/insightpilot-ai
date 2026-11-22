@@ -1,12 +1,10 @@
-from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from uuid import UUID
 
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, insert, select, update
-from sqlalchemy.engine import URL, Engine
+from sqlalchemy import insert, select, update
+from sqlalchemy.engine import Engine
 
 from app.core.config import Settings
 from app.db.models import AnalysisRun, AnonymousSession, Conversation, Message, Report
@@ -15,15 +13,6 @@ from app.main import create_app
 TRUSTED = {"Origin": "http://testserver"}
 FOREIGN = {"Origin": "https://other.example"}
 PDF = b"%PDF-1.4 test history"
-
-
-@pytest.fixture
-def history_engine(migrated_postgres_url: URL) -> Iterator[Engine]:
-    engine = create_engine(migrated_postgres_url, hide_parameters=True)
-    try:
-        yield engine
-    finally:
-        engine.dispose()
 
 
 def bootstrap(browser: TestClient) -> str:
@@ -81,7 +70,7 @@ def seed_history(
 
 
 def test_history_run_and_report_are_session_owned(
-    database_settings: Settings, history_engine: Engine
+    database_settings: Settings, postgres_engine: Engine
 ) -> None:
     with (
         TestClient(create_app(database_settings)) as owner,
@@ -90,7 +79,7 @@ def test_history_run_and_report_are_session_owned(
         assert other.get("/api/v1/history").status_code == 401
         bootstrap(owner)
         bootstrap(other)
-        conversation, run, report = seed_history(history_engine, owner)
+        conversation, run, report = seed_history(postgres_engine, owner)
 
         history = owner.get("/api/v1/history")
         assert (
@@ -126,13 +115,13 @@ def test_history_run_and_report_are_session_owned(
 
 
 def test_expired_cookie_cannot_read_history_and_can_bootstrap_again(
-    database_settings: Settings, history_engine: Engine
+    database_settings: Settings, postgres_engine: Engine
 ) -> None:
     with TestClient(create_app(database_settings)) as browser:
         first_csrf = bootstrap(browser)
-        conversation, _, _ = seed_history(history_engine, browser)
+        conversation, _, _ = seed_history(postgres_engine, browser)
         now = datetime.now(UTC)
-        with history_engine.begin() as connection:
+        with postgres_engine.begin() as connection:
             connection.execute(
                 update(AnonymousSession)
                 .where(AnonymousSession.token_hash == stored_digest(browser))
@@ -152,14 +141,14 @@ def test_expired_cookie_cannot_read_history_and_can_bootstrap_again(
 
 
 def test_deletion_requires_origin_csrf_and_ownership(
-    database_settings: Settings, history_engine: Engine
+    database_settings: Settings, postgres_engine: Engine
 ) -> None:
     with (
         TestClient(create_app(database_settings)) as owner,
         TestClient(create_app(database_settings)) as other,
     ):
         token, other_token = bootstrap(owner), bootstrap(other)
-        conversation, _, report = seed_history(history_engine, owner)
+        conversation, _, report = seed_history(postgres_engine, owner)
         target = f"/api/v1/history/{conversation}"
 
         for headers in (
@@ -182,11 +171,11 @@ def test_deletion_requires_origin_csrf_and_ownership(
 
 
 def test_active_analysis_prevents_history_deletion(
-    database_settings: Settings, history_engine: Engine
+    database_settings: Settings, postgres_engine: Engine
 ) -> None:
     with TestClient(create_app(database_settings)) as owner:
         token = bootstrap(owner)
-        conversation, _, _ = seed_history(history_engine, owner, status="RUNNING")
+        conversation, _, _ = seed_history(postgres_engine, owner, status="RUNNING")
         response = owner.delete(
             f"/api/v1/history/{conversation}",
             headers={**TRUSTED, "X-CSRF-Token": token},
@@ -196,12 +185,12 @@ def test_active_analysis_prevents_history_deletion(
 
 
 def test_corrupt_report_is_never_returned(
-    database_settings: Settings, history_engine: Engine
+    database_settings: Settings, postgres_engine: Engine
 ) -> None:
     with TestClient(create_app(database_settings)) as owner:
         bootstrap(owner)
-        _, _, report = seed_history(history_engine, owner)
-        with history_engine.begin() as connection:
+        _, _, report = seed_history(postgres_engine, owner)
+        with postgres_engine.begin() as connection:
             connection.execute(
                 update(Report)
                 .where(Report.id == UUID(report))

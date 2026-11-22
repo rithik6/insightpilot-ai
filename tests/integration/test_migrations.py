@@ -1,4 +1,3 @@
-from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from hashlib import sha256
@@ -31,17 +30,6 @@ from app.db.models import (
 
 SOLD_AT = datetime(2026, 1, 31, tzinfo=UTC)
 EXPIRY = datetime(2099, 1, 1, tzinfo=UTC)
-
-
-@pytest.fixture
-def migrated_engine(migrated_postgres_url: URL) -> Iterator[Engine]:
-    engine = create_engine(
-        migrated_postgres_url, poolclass=NullPool, hide_parameters=True
-    )
-    try:
-        yield engine
-    finally:
-        engine.dispose()
 
 
 def rejected(connection: Connection, statement: Insert, constraint: str) -> None:
@@ -93,7 +81,7 @@ def test_initial_revision_round_trip(postgres_url: URL) -> None:
         engine.dispose()
 
 
-def test_business_foreign_keys_unique_and_checks(migrated_engine: Engine) -> None:
+def test_business_foreign_keys_unique_and_checks(postgres_engine: Engine) -> None:
     item = {"sku": "SYN-1", "name": "Synthetic item", "category": "Demo"}
     sale = {
         "customer_id": 1,
@@ -109,7 +97,7 @@ def test_business_foreign_keys_unique_and_checks(migrated_engine: Engine) -> Non
         "discount_amount": Decimal("10"),
         "unit_cost": Decimal("20"),
     }
-    with migrated_engine.begin() as connection:
+    with postgres_engine.begin() as connection:
         rejected(
             connection,
             insert(Order).values(id=1, **sale),
@@ -184,9 +172,9 @@ def add_conversation(connection: Connection, token_hash: bytes) -> tuple[UUID, U
     return session, conversation
 
 
-def test_application_ownership_and_ledger_deletion(migrated_engine: Engine) -> None:
+def test_application_ownership_and_ledger_deletion(postgres_engine: Engine) -> None:
     run, usage = uuid4(), uuid4()
-    with migrated_engine.begin() as connection:
+    with postgres_engine.begin() as connection:
         owner, conversation_a = add_conversation(connection, b"a" * 32)
         _, conversation_b = add_conversation(connection, b"b" * 32)
         connection.execute(
@@ -248,9 +236,9 @@ def test_application_ownership_and_ledger_deletion(migrated_engine: Engine) -> N
         assert tuple(ledger) == (None, Decimal("0.00234567"))
 
 
-def test_report_constraints_and_deferred_binary(migrated_engine: Engine) -> None:
+def test_report_constraints_and_deferred_binary(postgres_engine: Engine) -> None:
     pdf = b"%PDF-1.4 synthetic test"
-    with migrated_engine.begin() as connection:
+    with postgres_engine.begin() as connection:
         _, conversation = add_conversation(connection, b"s" * 32)
         run = connection.execute(
             insert(AnalysisRun)
@@ -284,7 +272,7 @@ def test_report_constraints_and_deferred_binary(migrated_engine: Engine) -> None
             connection, insert(Report).values(**report), "uq_reports_analysis_run_id"
         )
 
-    with Session(migrated_engine) as session:
+    with Session(postgres_engine) as session:
         saved = session.get(Report, report_id)
         assert saved is not None and saved.title == "Result"
         with pytest.raises(InvalidRequestError, match="raiseload"):

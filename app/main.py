@@ -7,9 +7,11 @@ from uuid import uuid4
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 from starlette.middleware.base import RequestResponseEndpoint
 
+from app.api.dependencies import STORAGE_UNAVAILABLE
 from app.api.routes.health import router as health_router
 from app.api.routes.history import router as history_router
 from app.api.routes.sessions import router as sessions_router
@@ -31,7 +33,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             else None
         )
         if engine is not None:
-            application.state.database_sessions = sessionmaker(engine)
+            application.state.database_sessions = sessionmaker(
+                engine, expire_on_commit=False
+            )
         try:
             yield
         finally:
@@ -57,6 +61,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["Content-Type", "X-CSRF-Token"],
         expose_headers=["X-Request-ID"],
     )
+
+    @app.exception_handler(SQLAlchemyError)
+    async def handle_database_error(
+        _request: Request, _error: SQLAlchemyError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": STORAGE_UNAVAILABLE})
 
     @app.middleware("http")
     async def log_http_request(

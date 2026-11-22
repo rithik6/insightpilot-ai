@@ -3,8 +3,8 @@ from http.cookies import SimpleCookie
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
-from sqlalchemy.engine import URL
+from sqlalchemy import select
+from sqlalchemy.engine import Engine
 
 from app.core.config import Environment, Settings
 from app.db.models import AnonymousSession
@@ -19,12 +19,12 @@ def test_session_storage_unavailable(client: TestClient) -> None:
     )
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Session storage unavailable."}
+    assert response.json() == {"detail": "Data storage unavailable."}
     assert "set-cookie" not in response.headers
 
 
 def test_browser_reuses_session_and_database_stores_digest(
-    database_settings: Settings, migrated_postgres_url: URL
+    database_settings: Settings, postgres_engine: Engine
 ) -> None:
     with TestClient(create_app(database_settings)) as browser:
         first = browser.post("/api/v1/session", headers=LOCAL_ORIGIN)
@@ -46,15 +46,11 @@ def test_browser_reuses_session_and_database_stores_digest(
     assert not cookie["secure"]
     assert cookie["max-age"] == str(database_settings.session_lifetime_days * 86400)
 
-    engine = create_engine(migrated_postgres_url, hide_parameters=True)
-    try:
-        with engine.connect() as connection:
-            digests = (
-                connection.execute(select(AnonymousSession.token_hash)).scalars().all()
-            )
-        assert digests == [sha256(cookie.value.encode("ascii")).digest()]
-    finally:
-        engine.dispose()
+    with postgres_engine.connect() as connection:
+        digests = (
+            connection.execute(select(AnonymousSession.token_hash)).scalars().all()
+        )
+    assert digests == [sha256(cookie.value.encode("ascii")).digest()]
 
 
 def test_invalid_cookie_creates_a_separate_session(database_settings: Settings) -> None:

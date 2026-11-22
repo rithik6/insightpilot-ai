@@ -1,5 +1,4 @@
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from hmac import compare_digest
 from typing import Annotated
 from uuid import UUID
@@ -8,13 +7,16 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
-from app.security.sessions import cookie_name, csrf_token, find_active_session
+from app.security.sessions import cookie_name, csrf_token
+from app.services.sessions import active_session_id
+
+STORAGE_UNAVAILABLE = "Data storage unavailable."
 
 
 def database_session(request: Request) -> Iterator[Session]:
     factory: sessionmaker[Session] | None = request.app.state.database_sessions
     if factory is None:
-        raise HTTPException(status_code=503, detail="Session storage unavailable.")
+        raise HTTPException(status_code=503, detail=STORAGE_UNAVAILABLE)
 
     with factory() as database:
         yield database
@@ -32,13 +34,10 @@ def require_trusted_origin(request: Request) -> None:
 
 def require_session(request: Request, database: DatabaseSession) -> UUID:
     cookie = request.cookies.get(cookie_name(request.app.state.settings))
-    with database.begin():
-        session = find_active_session(database, cookie, datetime.now(UTC))
-        if session is None:
-            raise HTTPException(
-                status_code=401, detail="An active session is required."
-            )
-        return session.id
+    session_id = active_session_id(database, cookie)
+    if session_id is None:
+        raise HTTPException(status_code=401, detail="An active session is required.")
+    return session_id
 
 
 ActiveSession = Annotated[UUID, Depends(require_session)]

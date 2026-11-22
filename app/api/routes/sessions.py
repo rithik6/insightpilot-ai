@@ -1,8 +1,7 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.dependencies import DatabaseSession, require_trusted_origin
 from app.core.config import Settings
@@ -28,12 +27,7 @@ def create_session(
     settings: Settings = request.app.state.settings
     name = cookie_name(settings)
     lifetime = timedelta(days=settings.session_lifetime_days)
-    try:
-        session = establish_session(database, request.cookies.get(name), lifetime)
-    except SQLAlchemyError:
-        raise HTTPException(
-            status_code=503, detail="Session storage unavailable."
-        ) from None
+    session = establish_session(database, request.cookies.get(name), lifetime)
 
     response.headers["Cache-Control"] = "no-store"
     if session.created:
