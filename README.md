@@ -54,6 +54,8 @@ Run `uv run --locked pytest -q --postgres` in WSL to include the migration and d
 
 The [PostgreSQL schema and migration plan](docs/schema.md) covers the 12 V1 tables, their constraints, and the accounting rules for sales and returns.
 
+After applying migrations, `POST /api/v1/session` starts or resumes the anonymous session for the browser that holds its cookie. The default lifetime is 90 days and can be set with `INSIGHTPILOT_SESSION_LIFETIME_DAYS`. Staging and production use a secure cookie over HTTPS. Session history is tied to the browser profile that holds the unexpired cookie.
+
 ## Branch workflow
 
 | Branch | Purpose |
