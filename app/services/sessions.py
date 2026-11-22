@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from secrets import token_urlsafe
 
@@ -11,7 +11,8 @@ from app.security.sessions import TOKEN_BYTES, find_active_session, session_dige
 @dataclass(frozen=True)
 class SessionBootstrap:
     expires_at: datetime
-    new_token: str | None = None
+    token: str = field(repr=False)
+    created: bool
 
 
 def establish_session(
@@ -20,8 +21,10 @@ def establish_session(
     now = datetime.now(UTC)
     with database.begin():
         existing = find_active_session(database, cookie, now)
-        if existing is not None:
-            return SessionBootstrap(expires_at=existing.expires_at)
+        if existing is not None and cookie is not None:
+            return SessionBootstrap(
+                expires_at=existing.expires_at, token=cookie, created=False
+            )
 
         token = token_urlsafe(TOKEN_BYTES)
         expires_at = now + lifetime
@@ -31,4 +34,4 @@ def establish_session(
             )
         )
 
-    return SessionBootstrap(expires_at=expires_at, new_token=token)
+    return SessionBootstrap(expires_at=expires_at, token=token, created=True)

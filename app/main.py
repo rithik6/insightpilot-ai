@@ -5,11 +5,13 @@ from time import perf_counter
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import sessionmaker
 from starlette.middleware.base import RequestResponseEndpoint
 
 from app.api.routes.health import router as health_router
+from app.api.routes.history import router as history_router
 from app.api.routes.sessions import router as sessions_router
 from app.core.config import Settings
 from app.core.logging import LogEvent
@@ -45,7 +47,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.database_sessions = None
     app.include_router(health_router, prefix="/api/v1")
+    app.include_router(history_router, prefix="/api/v1")
     app.include_router(sessions_router, prefix="/api/v1")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.browser_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["Content-Type", "X-CSRF-Token"],
+        expose_headers=["X-Request-ID"],
+    )
 
     @app.middleware("http")
     async def log_http_request(

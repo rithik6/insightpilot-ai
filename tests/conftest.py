@@ -146,6 +146,7 @@ def database_settings(migrated_postgres_url: URL) -> Settings:
     assert url.username and url.password and url.host and url.port and url.database
     return Settings(
         environment="test",
+        allowed_origins=["http://testserver", "https://testserver"],
         postgres_host=url.host,
         postgres_port=url.port,
         postgres_user=url.username,
