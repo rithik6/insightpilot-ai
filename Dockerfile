@@ -18,6 +18,8 @@ RUN groupadd --gid 10001 insightpilot \
 WORKDIR /app
 COPY --from=dependencies /opt/venv /opt/venv
 COPY app/ ./app/
+COPY alembic.ini ./
+COPY migrations/ ./migrations/
 USER 10001:10001
 EXPOSE 8000
 CMD ["python", "-m", "app"]

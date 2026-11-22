@@ -2,8 +2,11 @@
 !.python-version
 !pyproject.toml
 !uv.lock
+!alembic.ini
 !app/
 !app/**
+!migrations/
+!migrations/**
 **/.env*
 **/__pycache__/
 **/*.py[cod]

@@ -31,7 +31,7 @@ jobs:
           uv lock --check
           uv sync --locked
       - name: Run pytest
-        run: uv run --locked --no-sync pytest -q
+        run: uv run --locked --no-sync pytest -q --postgres
       - name: Check lint and formatting
         run: |
           uv run --locked --no-sync ruff check .

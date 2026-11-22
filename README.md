@@ -27,6 +27,7 @@ From Ubuntu WSL, set `INSIGHTPILOT_POSTGRES_PASSWORD` in `.env` before the first
 
 ```sh
 docker compose up --build --wait
+docker compose run --rm app alembic upgrade head
 curl --fail http://127.0.0.1:8000/api/v1/health
 curl --fail http://127.0.0.1:8000/api/v1/ready
 ```
@@ -47,7 +48,7 @@ uv run --locked ruff check .
 uv run --locked ruff format --check .
 ```
 
-GitHub Actions runs these checks, validates the lockfile, scans the checked-out Git history for secrets, and builds and starts all four services. Run the same isolated Compose smoke test from WSL with `bash scripts/smoke_compose.sh`. The test uses port `18016` by default and accepts `INSIGHTPILOT_API_PORT` if you need another port.
+Run `uv run --locked pytest -q --postgres` in WSL to include the migration and database tests on disposable PostgreSQL. GitHub Actions runs that suite, validates the lockfile, scans Git history for secrets, and builds and starts all four services. Run the same isolated Compose and migration smoke test with `bash scripts/smoke_compose.sh`. The smoke test uses port `18016` by default and accepts `INSIGHTPILOT_API_PORT` if you need another port.
 
 ## Data model
 

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     bind_host: str = "127.0.0.1"
     bind_port: int = Field(default=8000, ge=1, le=65535)
     postgres_host: str | None = None
+    postgres_port: int = Field(default=5432, ge=1, le=65535)
     postgres_database: str = "insightpilot"
     postgres_user: str = "insightpilot"
     postgres_password: SecretStr | None = None

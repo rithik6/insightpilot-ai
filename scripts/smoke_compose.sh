@@ -22,6 +22,8 @@ trap cleanup EXIT
 
 compose config --quiet
 compose up --build --wait --wait-timeout 120
+compose run --rm -T app alembic upgrade head
+compose run --rm -T app alembic check
 base_url="http://127.0.0.1:${INSIGHTPILOT_API_PORT}/api/v1"
 test "$(curl --fail --silent --show-error --max-time 10 "$base_url/health")" = '{"status":"ok"}'
 test "$(curl --fail --silent --show-error --max-time 10 "$base_url/ready")" = '{"status":"ready"}'
