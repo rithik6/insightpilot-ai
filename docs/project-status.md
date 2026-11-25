@@ -112,12 +112,15 @@ The timing figures describe a disposable local database run and act as a future 
 
 The [metric specification](metrics.md) is on `feature/metric-spec`, pending review and merge.
 
-- Shared rules cover terms, UTC periods, dataset coverage, filters, dimensions, rounding, result statuses, evidence records, and the read-only execution boundary.
+- Shared rules cover terms, UTC periods, dataset coverage, filters, dimensions, precision and display, result statuses, evidence records, and the read-only execution boundary.
+- Results use `OK`, `INVALID_RANGE` for malformed or out-of-coverage periods, `INSUFFICIENT_DATA` for valid periods without records to calculate from, and `NOT_APPLICABLE` for zero or negative denominators.
+- Grounding rules state that every number comes from the current database, nothing is hardcoded, and the language model never invents values.
+- A data-quality table records the safeguards against silent `NaN` removal, missing data treated as zero, numbers stored as text, index misalignment, stray spaces and letter case in labels, join double counting, time-zone drift, and floating-point error.
 - Base calculations B1 for sale totals and B2 for approved return totals include reference SQL. B3 for customer purchases and B4 for inventory days are outlined for later metrics.
 - Metrics 01 to 10 are fully specified. Metrics 11 to 25 have planned definitions, dependencies, and the questions Phase 9.1 must settle.
 - The dependency graph has no cycles because each metric depends only on base calculations or lower-numbered metrics.
 - The `tests/fixtures/metrics-v1/` CSVs pass the snapshot validator. Their expected values were calculated by hand and reproduced by running the B1 and B2 SQL on disposable PostgreSQL 17.
-- Six decisions to confirm are listed at the end of the specification.
+- The six specification decisions were confirmed on 2026-11-25.
 
 ## Current application scope
 
@@ -152,22 +155,22 @@ For metrics and import work, add focused fixture tests and a disposable PostgreS
 
 ### Immediate repository step
 
-Finish Phase 4.1 before writing analytics code.
+Finish Phase 4.1 and the importer label fix before writing analytics code.
 
-1. Review the [metric specification](metrics.md) and confirm or change its listed decisions.
-2. Run the verification checklist and review the diff for secrets and generated files.
-3. Commit on `feature/metric-spec`, push, open a pull request into `development`, wait for CI, and merge it.
+1. Merge the [metric specification](metrics.md) pull request into `development` after CI passes.
+2. Make the importer reject text with leading or trailing spaces, and region, category, or segment labels that differ only by letter case. Do this on a separate `fix/` branch with tests.
 
 ### Next product brick — Phases 4.2 and 4.3
 
 Implement the shared read-only calculations from the specification.
 
 - B1 sale totals and B2 approved return totals as parameterized SQL with the allowlisted group keys
-- Dataset coverage, zero-filled groups, and the `OK`, `NOT_APPLICABLE`, and `INSUFFICIENT_DATA` statuses
+- Dataset coverage read from the database, zero-filled groups keyed explicitly, and the `OK`, `INVALID_RANGE`, `INSUFFICIENT_DATA`, and `NOT_APPLICABLE` statuses with plain-language messages
+- Filter values trimmed and matched case-insensitively to the stored spelling
 - Derived values for net sales, adjusted COGS, gross profit, discounted sales, gross margin, discount rate, and period comparison
 - `Decimal` arithmetic with the documented rounding
 
-Test against `tests/fixtures/metrics-v1/` using the expected tables in the specification, including a disposable PostgreSQL test. Phase 4.4 then registers metrics 01 to 10 and their evidence records.
+Test against `tests/fixtures/metrics-v1/` using the expected tables in the specification, including a disposable PostgreSQL test. Add a test that group values add up to the ungrouped total, and one that replaces the snapshot and checks that the answer changes. Phase 4.4 then registers metrics 01 to 10 and their evidence records.
 
 ## Remaining roadmap
 

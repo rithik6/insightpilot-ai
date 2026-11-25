@@ -13,21 +13,22 @@ V1 has exactly these 25 capabilities. Helpers such as `discounted_sales` are int
 - **Sale line** means an `order_items` row on a qualifying order. Gross sales, discounts, and original cost of goods sold (COGS) are recognized on `orders.ordered_at`.
 - **Approved return event** means a `returns` row with status `approved` on a sale line. Refunds and cost reversals are recognized on `returns.returned_at`. Pending and rejected returns contribute nothing.
 - **Attribution**: A return event keeps the region of its original order and the category of its original product.
+- **Records in scope** means the sale lines and approved return events that match a request's period and filters.
 
 ### Periods
 
-A request gives `start_date` and `end_date` as UTC calendar dates. The period is `[start_date 00:00 UTC, end_date 00:00 UTC)`, so January 2025 is `start_date=2025-01-01` and `end_date=2025-02-01`. `end_date` must be after `start_date`. Comparisons use UTC instants, so an order at `2025-02-01T00:30:00+01:00` belongs to January.
+A request gives `start_date` and `end_date` as UTC calendar dates. The period is `[start_date 00:00 UTC, end_date 00:00 UTC)`, so January 2025 is `start_date=2025-01-01` and `end_date=2025-02-01`. If `end_date` is not after `start_date`, the result is `INVALID_RANGE`. Comparisons use UTC instants, so an order at `2025-02-01T00:30:00+01:00` belongs to January.
 
 ### Dataset coverage
 
-Coverage starts on the earliest UTC date among order timestamps, return timestamps, and inventory days. It ends, exclusively, on the day after the latest such date. The seed `42` snapshot covers `[2024-01-01, 2026-01-01)`.
+Coverage starts on the earliest UTC date among order timestamps, return timestamps, and inventory days. It ends, exclusively, on the day after the latest such date. The engine reads coverage from the database for every investigation, so new data extends it automatically. The seed `42` snapshot happens to cover `[2024-01-01, 2026-01-01)`, but that date is not a constant in code.
 
-- A requested or comparison period must lie fully inside coverage. Otherwise the metric returns `INSUFFICIENT_DATA` with the coverage in its evidence. The engine never clips a period.
-- Inside coverage, a period, region, or category with no events is a true zero. SQL returns no row for an empty group, so the engine fills zero totals for every expected group.
+- A requested or comparison period must lie fully inside coverage. Otherwise the result is `INVALID_RANGE`, and its message names the requested dates and the available dates. The engine never clips a period to fit.
+- Inside coverage, a period, region, or category with no events has a true value of zero for dollar and count metrics. SQL returns no row for an empty group, so the engine fills zero totals for every expected group.
 
 ### Filters
 
-Omit a filter to include everything. Unknown values, duplicates, empty lists, and lists longer than ten values are validation errors that stop the request before any SQL runs.
+Omit a filter to include everything. The allowed values are read from the database for each investigation. Request values are trimmed and matched case-insensitively to the stored spelling, so ` east ` becomes `East`. The evidence records the stored spelling. Unknown values, duplicates after matching, empty lists, and lists longer than ten values are validation errors that stop the request before any SQL runs. The error message lists the available values.
 
 | Filter | Allowed values | Applies to |
 | --- | --- | --- |
@@ -43,22 +44,30 @@ Omit a filter to include everything. Unknown values, duplicates, empty lists, an
 - A group's ratio uses that group's numerator and denominator. A total ratio uses the total numerator and denominator. Never average ratios across groups.
 - Group order counts can add up to more than the total. An order with lines in two categories counts once in each category and once in the total.
 
-### Values, units, and rounding
+### Values, precision, and display
 
-- Money is USD from `NUMERIC(14, 2)` columns. Sums are exact and reported with two decimals. Python uses `Decimal`, never `float`. JSON carries decimals as strings.
-- Ratios are fractions, so `0.0857` means 8.57%. Compute them with `Decimal` from exact components and round half up to four decimal places.
-- Money averages such as average order value round half up to cents.
-- Counts are integers.
+Every value has one fixed precision. Trusted display code in the UI and PDF formats values as the last step. The language model never rounds or formats numbers.
+
+| Kind | Calculated as | Stored in evidence | Shown to users |
+| --- | --- | --- | --- |
+| Dollars | Exact `Decimal` sums of `NUMERIC(14, 2)` columns | String with exactly two decimals, such as `"1234.50"` | `$1,234.50`, and `−$10.00` when negative |
+| Dollar averages | `Decimal`, rounded half up to cents | String with two decimals | `$143.75` |
+| Counts | Integer | JSON integer | `1,234`, never `1,234.0` |
+| Ratios | `Decimal` from exact components, rounded half up to four decimal places | String, such as `"0.5217"` | `52.17%` |
+| Date ranges | Start date and exclusive end date | `start_date` and `end_date` | Inclusive dates, such as `1 Jan 2025 to 31 Jan 2025` |
+
+Python never uses `float` for analytics. JSON carries decimals as strings to keep them exact. Floats appear only inside chart rendering.
 
 ### Result status
 
-| Status | Meaning |
-| --- | --- |
-| `OK` | The value is defined. |
-| `NOT_APPLICABLE` | The formula needs a positive denominator and the denominator is zero or negative. The components are still reported. |
-| `INSUFFICIENT_DATA` | The period or comparison period is not fully inside coverage. No value is reported. |
+| Status | Meaning | Example message |
+| --- | --- | --- |
+| `OK` | The value is defined. Inside coverage, a period with no sales has a true value of `0.00`. | — |
+| `INVALID_RANGE` | The requested or comparison period is malformed or not fully inside coverage. No value is reported. | `No data for 1 Dec 2024 to 31 Dec 2024. Available data covers 1 Jan 2025 to 28 Feb 2025.` |
+| `INSUFFICIENT_DATA` | The period is valid, but there are no records in scope to calculate from, or the metric needs more history than the data holds. No value is reported. | `There are no qualifying orders in this period, so average order value cannot be calculated.` |
+| `NOT_APPLICABLE` | Records exist, but the formula's denominator is zero or negative. The components are still reported. | `Net sales are −$10.00, so gross margin is not meaningful.` |
 
-Each grouped row carries its own status. Invalid requests are rejected before execution and produce no evidence. Examples are an unknown metric, invalid dates, an unknown filter value, or an unsupported `group_by`.
+Each grouped row carries its own status. Other invalid requests, such as an unknown metric, an unknown filter value, or an unsupported `group_by`, are rejected before execution and produce no evidence. Phase 6 maps these metric statuses to the run-level analysis status. The user always sees the plain-language message.
 
 ### Evidence record
 
@@ -68,7 +77,7 @@ Every metric execution produces one evidence record. Every number in a narrative
 | --- | --- |
 | `evidence_id` | Unique within the investigation, such as `ev-003` |
 | `metric_key`, `metric_version` | For example `gross_margin` and `1` |
-| `status` | Overall status |
+| `status`, `message` | Overall status, and a plain-language reason for any status other than `OK` |
 | `period`, `comparison_period` | Start and exclusive end dates; the comparison appears only where used |
 | `filters`, `group_by` | Normalized filters, sorted and deduplicated, with `null` for an omitted filter |
 | `unit` | `USD`, `ratio`, or `count` |
@@ -86,6 +95,7 @@ January 2025 gross margin on the [fixture](#fixture-metrics-v1) produces this re
   "metric_key": "gross_margin",
   "metric_version": 1,
   "status": "OK",
+  "message": null,
   "period": {"start_date": "2025-01-01", "end_date": "2025-02-01"},
   "filters": {"regions": null, "categories": null},
   "group_by": "none",
@@ -101,6 +111,27 @@ January 2025 gross margin on the [fixture](#fixture-metrics-v1) produces this re
 ### Execution boundary
 
 Analytics run only the registered, parameterized SQL in this document. They use read-only credentials inside one read-only `REPEATABLE READ` transaction per investigation. Dates and filter values are bound parameters. Group keys come from a fixed allowlist in code. The language model never supplies SQL, column names, or expressions.
+
+## Answers come from the current data
+
+- **Nothing is hardcoded.** Code holds formulas and SQL. Every number is calculated from the database when the question runs. Regions, categories, products, and the coverage dates are read from the database for each investigation. The seed `42` dates and planted scenarios in this repository are test inputs, never application constants or prompt content.
+- **New data gives new answers.** After a re-import, the next question uses the new rows. The per-investigation memo key includes `dataset_version`, and V1 keeps no result cache across investigations, so no stale value can be reused.
+- **Saved history is a record of its time.** A reopened conversation or PDF shows the numbers saved with it and does not recalculate. Its evidence carries the `dataset_version` and coverage it used, so the UI can label it. A new question gets current numbers.
+- **The language model never invents an answer.** It sees evidence records, never tables or rows. It chooses registered metrics and writes short text. A deterministic validator checks that every number in that text matches an evidence value with the same period and filters. Text that fails validation is replaced by a fixed sentence built from the evidence, or the answer abstains. A question the 25 metrics cannot answer, including one about outside facts such as industry benchmarks, returns `UNSUPPORTED`. When the data does not cover a request, the answer reports `INVALID_RANGE` or `INSUFFICIENT_DATA` instead of guessing.
+- **Tests enforce it.** Phase 4.2 adds a test that calculates a metric, replaces the snapshot with changed rows, and checks that the result changes. Expected numbers live only in test fixtures and this document.
+
+## Data-quality safeguards
+
+| Risk | What goes wrong | Safeguard | Status |
+| --- | --- | --- | --- |
+| Silent removal of NaN | pandas `sum()` and `mean()` skip `NaN`, so totals shrink without warning. PostgreSQL `NUMERIC` accepts `'NaN'`, which sorts above every number. | The importer accepts only plain decimal and integer patterns, so `NaN`, `inf`, `null`, and blank numbers fail with the file and line. Business numeric columns are `NOT NULL`. CHECK constraints reject `'NaN'` money and infinite timestamps. Analytics aggregate in SQL and `Decimal`, not pandas. | In place since Phases 2 and 3 |
+| Missing data treated as zero | An empty SQL `sum()` returns `NULL`. Turning that into 0 for a period outside the data invents a result. | Coverage is checked first, and periods outside it return `INVALID_RANGE`. Inside coverage, empty groups are true zeros and are filled explicitly. Missing inventory days count as missing, never as zero stock. | Phase 4.2 |
+| Numbers stored as text | `"$1,200"` or `"100"` stored as text sorts alphabetically, so `"9"` ranks above `"100"`, and arithmetic fails. | Money columns are `NUMERIC(14, 2)`, quantities are `INTEGER`, timestamps are `TIMESTAMPTZ`, and days are `DATE`. The importer rejects currency symbols, thousands separators, spaces, signs, and exponents instead of guessing what `"1,200"` means. Sorting and ranking happen in SQL or on `Decimal` values. The API returns rows already sorted, and the UI converts decimal strings to numbers for charts and never sorts formatted text. | Types and importer in place; API and UI rules apply from Phase 7 |
+| Index misalignment | Combining two pandas objects aligns on index labels. A region missing from one side becomes `NaN`, and combining by position attaches values to the wrong group. | B1 and B2 results are combined by explicit group key into a mapping pre-filled with every expected key, never by position. Both queries build month keys from UTC dates of the same type. A key from SQL outside the expected set raises an error instead of being dropped. Any pandas merge uses an explicit `how`, `validate="one_to_one"`, and a no-`NaN` assertion. Tests check that additive group values add up to the ungrouped total. | Phase 4.2 |
+| Stray spaces or letter case in labels | `" East"`, `"East"`, and `"east"` become three regions and split the totals. | The importer rejects text with leading or trailing spaces, and grouping labels for region, category, and segment that differ only by letter case. Request filter values are trimmed and matched case-insensitively to the stored spelling. | Importer fix in a separate pull request; request rule in Phase 4.2 |
+| Double counting through joins | Joining returns to sale lines repeats a sale once for each of its return events. | B1 and B2 run at their own grain and are combined after aggregation. | Phase 4.2 |
+| Time-zone drift | Local-time month boundaries move orders between months. | Timestamps are `TIMESTAMPTZ`, and periods and month keys use UTC. | In place |
+| Floating-point error | `0.1 + 0.2` is not exactly `0.3` in `float`, so totals drift. | SQL `NUMERIC` and Python `Decimal` throughout. | Phase 4.2 |
 
 ## Base calculations
 
@@ -159,7 +190,7 @@ GROUP BY 1
 | `region` | `o.region` | `o.region` |
 | `category` | `p.category` | `p.category` |
 
-The engine runs B1 and B2 separately and joins their results by group key, filling zeros for missing groups. A single query that joins returns to sale lines would repeat a sale's values once for each of its return events.
+The engine runs B1 and B2 separately and combines their results by group key, filling zeros for missing groups. A single query that joins returns to sale lines would repeat a sale's values once for each of its return events.
 
 ### B3 — Customer purchases
 
@@ -180,27 +211,27 @@ Used by metric 20. B4 gives closing stock per product per UTC day. A missing row
 
 ## Metrics 01 to 10
 
-All ten are version `1`. Metrics marked "all four" support `group_by` values `none`, `month`, `region`, and `category`.
+All ten are version `1`. Metrics marked "all four" support `group_by` values `none`, `month`, `region`, and `category`. Any metric returns `INVALID_RANGE` for a malformed period or one outside coverage. The last two columns list the other non-`OK` outcomes.
 
-| # | Key | Formula | Depends on | Unit | `group_by` | `NOT_APPLICABLE` when |
-| ---: | --- | --- | --- | --- | --- | --- |
-| 01 | `gross_sales` | Sum of `quantity × unit_list_price` | B1 | USD | All four | Never |
-| 02 | `net_sales` | `gross_sales − discounts − approved_refunds` | B1, B2 | USD | All four | Never; can be negative |
-| 03 | `average_order_value` | `discounted_sales ÷ qualifying_orders` | B1 | USD | All four | `qualifying_orders = 0` |
-| 04 | `revenue_growth` | `(net_sales_P − net_sales_Q) ÷ net_sales_Q` | 02 | Ratio and USD change | `none` | `net_sales_Q ≤ 0` |
-| 05 | `revenue_by_region` | `net_sales` per region; share is `net_sales_region ÷ total net_sales` | 02 | USD and ratio | `region` only | Shares only: total ≤ 0 or any region below 0 |
-| 06 | `adjusted_cogs` | `sale_cogs − returned_cogs` | B1, B2 | USD | All four | Never; can be negative |
-| 07 | `gross_profit` | `net_sales − adjusted_cogs` | 02, 06 | USD | All four | Never; can be negative |
-| 08 | `gross_margin` | `gross_profit ÷ net_sales` | 02, 07 | Ratio | All four | `net_sales ≤ 0` |
-| 09 | `discount_rate` | `discounts ÷ gross_sales` | B1 | Ratio | All four | `gross_sales = 0` |
-| 10 | `refund_losses` | Sum of approved `refund_amount` | B2 | USD | All four | Never |
+| # | Key | Formula | Depends on | Unit | `group_by` | `INSUFFICIENT_DATA` when | `NOT_APPLICABLE` when |
+| ---: | --- | --- | --- | --- | --- | --- | --- |
+| 01 | `gross_sales` | Sum of `quantity × unit_list_price` | B1 | USD | All four | Never; no sales is `0.00` | Never |
+| 02 | `net_sales` | `gross_sales − discounts − approved_refunds` | B1, B2 | USD | All four | Never | Never; can be negative |
+| 03 | `average_order_value` | `discounted_sales ÷ qualifying_orders` | B1 | USD | All four | No qualifying orders | Never |
+| 04 | `revenue_growth` | `(net_sales_P − net_sales_Q) ÷ net_sales_Q` | 02 | Ratio and USD change | `none` | Q has no records in scope | Otherwise, `net_sales_Q ≤ 0` |
+| 05 | `revenue_by_region` | `net_sales` per region; share is `net_sales_region ÷ total net_sales` | 02 | USD and ratio | `region` only | Shares only: no records in scope | Shares only: total ≤ 0 or any region below 0 |
+| 06 | `adjusted_cogs` | `sale_cogs − returned_cogs` | B1, B2 | USD | All four | Never | Never; can be negative |
+| 07 | `gross_profit` | `net_sales − adjusted_cogs` | 02, 06 | USD | All four | Never | Never; can be negative |
+| 08 | `gross_margin` | `gross_profit ÷ net_sales` | 02, 07 | Ratio | All four | No records in scope | Otherwise, `net_sales ≤ 0` |
+| 09 | `discount_rate` | `discounts ÷ gross_sales` | B1 | Ratio | All four | No sale lines | Otherwise, `gross_sales = 0` |
+| 10 | `refund_losses` | Sum of approved `refund_amount` | B2 | USD | All four | Never | Never |
 
 ### Metric notes
 
 - **01 Gross sales** is merchandise value at list price before discounts and refunds, on the order date. The data holds no shipping or tax.
 - **02 Net sales** subtracts refunds on their return date. A period with heavy refunds of earlier sales can have negative net sales.
 - **03 Average order value** uses discounted sales on the order date, not net sales. Refunds in a period can belong to orders from earlier periods, so subtracting them would mix two order populations. With a category filter, the numerator counts only matching lines and the denominator counts orders with at least one matching line.
-- **04 Revenue growth** compares the current period P with a comparison period Q. When P spans whole calendar months, the default Q is the same number of immediately preceding calendar months. Otherwise the default Q is the immediately preceding period with the same number of days. A request can instead set `comparison_start_date` and `comparison_end_date`, which must not overlap P. The record reports both net sales values, `absolute_change`, and `growth`. `absolute_change` is reported whenever both periods are inside coverage. Region and category filters are allowed. The per-region breakdown is metric 22.
+- **04 Revenue growth** compares the current period P with a comparison period Q. When P spans whole calendar months, the default Q is the same number of immediately preceding calendar months. Otherwise the default Q is the immediately preceding period with the same number of days. A request can instead set `comparison_start_date` and `comparison_end_date`, which must not overlap P. The record reports both net sales values, `absolute_change`, and `growth`. `absolute_change` is reported whenever both periods are valid. Region and category filters are allowed. The per-region breakdown is metric 22.
 - **05 Revenue by region** allows a category filter but not a region filter. Shares are `NOT_APPLICABLE` when the total is not positive or any region is negative, because the shares would not describe parts of a whole. Regional net sales are still reported.
 - **06 Adjusted COGS** reverses cost at the original line's `unit_cost`, not the product's later cost. A period with only refunds has negative adjusted COGS.
 - **08 Gross margin** for several groups or months comes from summed gross profit and summed net sales.
@@ -227,7 +258,7 @@ These definitions guide the registry design. Phase 9.1 settles the listed questi
 | 22 | `regional_growth` | Metric 04 for each region | 04, 05 | — |
 | 23 | `profit_change_contribution` | Change in gross profit per region, category, or product between P and Q; share is group change ÷ total change when the total change is not zero | 07 | — |
 | 24 | `discount_performance_comparison` | Sale lines grouped into line discount-rate bands, with gross sales, discount rate, net sales, and gross margin per band | B1, B2, 08 | Band boundaries |
-| 25 | `revenue_anomaly_detection` | Flags days whose net sales have a robust z-score of at least 3.5 in magnitude against the trailing 28 days' median and median absolute deviation (MAD); needs 28 earlier days; `NOT_APPLICABLE` when MAD is zero | 21 | Window and threshold, checked against the September 16, 2025 spike |
+| 25 | `revenue_anomaly_detection` | Flags days whose net sales have a robust z-score of at least 3.5 in magnitude against the trailing 28 days' median and median absolute deviation (MAD); `INSUFFICIENT_DATA` without 28 earlier days; `NOT_APPLICABLE` when MAD is zero | 21 | Window and threshold, checked against the September 16, 2025 spike |
 
 ## Dependency graph
 
@@ -349,18 +380,20 @@ February Audio adjusted COGS is 45.00 − 40.00 = 5.00. The sale on order 6 cost
 | --- | ---: | ---: | ---: | ---: | --- |
 | None | 230.00 | 77.50 | −152.50 | −0.6630 | `OK` |
 | Region East | 140.00 | −10.00 | −150.00 | −1.0714 | `OK` |
-| Region West, category Lighting | 0.00 | 87.50 | 87.50 | — | `NOT_APPLICABLE` because comparison net sales are 0 |
+| Region West, category Lighting | 0.00 | 87.50 | 87.50 | — | `INSUFFICIENT_DATA`, because January has no West Lighting sales or returns |
 
-### Expected zero, not-applicable, and insufficient-data cases
+### Expected invalid-range, insufficient-data, and not-applicable cases
 
 | Request | Expected result |
 | --- | --- |
-| February, region West, category Audio | Metrics 01, 02, 06, 07, and 10 return true zeros with `OK`. Metric 03 is `NOT_APPLICABLE` with 0 orders. Metric 08 is `NOT_APPLICABLE` with 0.00 net sales. Metric 09 is `NOT_APPLICABLE` with 0.00 gross sales. |
+| February, region West, category Audio | Metrics 01, 02, 06, 07, and 10 return true zeros with `OK`, and the sample shows 0 orders and 0 return events. Metrics 03, 08, and 09 are `INSUFFICIENT_DATA` because there are no records in scope. |
 | February, category Audio | Metric 08 is `NOT_APPLICABLE` because net sales are −10.00. |
-| Metric 04 for January 2025 with the default comparison | `INSUFFICIENT_DATA`, because December 2024 is before coverage |
-| Any metric from 2024-12-01 to 2025-01-01 | `INSUFFICIENT_DATA` |
-| Any metric from 2025-02-15 to 2025-03-15 | `INSUFFICIENT_DATA`, because the period extends past coverage and is not clipped |
-| Filter region `North` | Validation error, because the fixture has no North orders |
+| Metric 04 for January 2025 with the default comparison | `INVALID_RANGE`: `No data for 1 Dec 2024 to 31 Dec 2024. Available data covers 1 Jan 2025 to 28 Feb 2025.` |
+| Any metric from 2024-12-01 to 2025-01-01 | `INVALID_RANGE`, because the period is before coverage |
+| Any metric from 2025-02-15 to 2025-03-15 | `INVALID_RANGE`, because the period extends past coverage and is not clipped |
+| Any metric from 2025-02-01 to 2025-01-01 | `INVALID_RANGE`: `The end date must be after the start date.` |
+| Filter region ` east ` | Matches `East` after trimming and case-insensitive matching |
+| Filter region `North` | Validation error that lists the available regions, East and West |
 
 ### Edge cases the fixture covers
 
@@ -370,16 +403,17 @@ February Audio adjusted COGS is 45.00 − 40.00 = 5.00. The sale on order 6 cost
 - Pending return 4 and rejected return 3 have no effect.
 - Order 6 shows historical price and cost snapshots, and return 2 reverses the original cost.
 - February East and February Audio have negative net sales and gross profit.
-- Zero denominators and true zeros inside coverage.
+- True zeros inside coverage, no-record ratios, and zero or negative denominators.
+- Periods outside coverage and a reversed period.
 - Total ratios come from totals, never from averaged group ratios.
 
-## Decisions to confirm
+## Confirmed decisions
 
-The master plan and schema document did not settle these choices. Phase 4.2 builds on them unless they change.
+Confirmed on 2026-11-25.
 
 1. Revenue means net sales.
 2. Average order value and revenue per active customer use discounted sales before refunds.
-3. A period partly outside coverage returns `INSUFFICIENT_DATA` instead of being clipped.
+3. A malformed period, or one even partly outside the data, returns `INVALID_RANGE` with the requested and available dates and is never clipped. A valid period with no records to calculate from returns `INSUFFICIENT_DATA`.
 4. Shares are `NOT_APPLICABLE` when the total is not positive or any group is negative.
 5. The default growth comparison is the preceding calendar months for whole-month periods, and otherwise the preceding period of equal length.
-6. Ratios round half up to four decimal places.
+6. Dollars keep two decimals, counts are whole numbers, ratios round half up to four decimal places and show as percentages with two, and date ranges show inclusive dates. Only display code formats values.
