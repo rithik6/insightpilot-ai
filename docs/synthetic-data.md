@@ -43,7 +43,7 @@ Run validation from the repository root in Ubuntu WSL. This command reads the si
 uv run --locked python -m app.db.import_synthetic data/generated/synthetic-v1
 ```
 
-Validation requires each file's schema columns exactly once and reports the file, line, and violated rule for malformed records. Blank customer segments become SQL `NULL`. Money must have at most two decimal places, timestamps need an explicit offset, and inventory dates use `YYYY-MM-DD`. A header-only `returns.csv` is valid for a snapshot with no return events. Missing inventory dates stay missing.
+Validation requires each file's schema columns exactly once and reports the file, line, and violated rule for malformed records. Blank customer segments become SQL `NULL`. Money must be plain digits with at most two decimal places, so `$1,200.00` is rejected rather than reinterpreted. Timestamps need an explicit offset, and inventory dates use `YYYY-MM-DD`. Text must not start or end with spaces. Region, category, and segment labels must not differ only by letter case, because analytics group by them. A header-only `returns.csv` is valid for a snapshot with no return events. Missing inventory dates stay missing.
 
 To load into an already migrated development database, add `--replace`. The importer uses the project's `INSIGHTPILOT_POSTGRES_*` settings to connect. With the local Compose stack, mount the input directory read-only in a one-off app container.
 

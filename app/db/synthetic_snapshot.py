@@ -34,6 +34,13 @@ TIMESTAMP = re.compile(
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 MONEY = re.compile(r"[0-9]{1,12}(?:\.[0-9]{1,2})?")
 INTEGER = re.compile(r"[0-9]+")
+# Analytics group by these labels, so spellings that differ only by case would
+# split one group into several.
+GROUPING_LABELS = (
+    ("customers", "segment"),
+    ("products", "category"),
+    ("orders", "region"),
+)
 
 
 class SnapshotError(ValueError):
@@ -67,13 +74,16 @@ def parse_field(table: Table, column: Column, raw: str) -> Any:
             if len(digits) <= len(str(maximum)) and minimum <= int(digits) <= maximum:
                 return int(digits)
         raise SnapshotError(
-            f"{name} must be a whole number from {minimum} to {maximum}."
+            f"{name} must be a whole number from {minimum} to {maximum}, "
+            "written as plain digits without separators or spaces."
         )
     if isinstance(column.type, Numeric):
         if MONEY.fullmatch(raw):
             return Decimal(raw)
         raise SnapshotError(
-            f"{name} must be a nonnegative amount with up to 12 whole digits and 2 decimal places."
+            f"{name} must be a nonnegative amount with up to 12 whole digits and 2 decimal places, "
+            "written as plain digits such as 1200.00 without a currency symbol, "
+            "thousands separator, or spaces."
         )
     if isinstance(column.type, DateTime):
         if TIMESTAMP.fullmatch(raw):
@@ -98,6 +108,8 @@ def parse_field(table: Table, column: Column, raw: str) -> Any:
         raise SnapshotError(
             f"{name} must be nonblank text of at most {column.type.length} characters."
         )
+    if raw != raw.strip():
+        raise SnapshotError(f"{name} must not start or end with spaces.")
     return raw
 
 
@@ -167,6 +179,22 @@ def validate_keys(snapshot: Snapshot) -> dict[str, dict[tuple, SourceRow]]:
     return indexes
 
 
+def validate_labels(snapshot: Snapshot) -> None:
+    for table, column in GROUPING_LABELS:
+        spellings: dict[str, tuple[str, int]] = {}
+        for row in snapshot.rows[table]:
+            label = row.values[column]
+            if label is None:
+                continue
+            spelling, line = spellings.setdefault(label.casefold(), (label, row.line))
+            if spelling != label:
+                raise row_error(
+                    table,
+                    row,
+                    f"{column} differs only by letter case from the value on line {line}.",
+                )
+
+
 def validate_business_rules(
     snapshot: Snapshot, indexes: dict[str, dict[tuple, SourceRow]]
 ) -> None:
@@ -225,5 +253,7 @@ def read_snapshot(directory: Path) -> Snapshot:
     snapshot = Snapshot(
         {table.name: read_table(directory, table) for table in BUSINESS_TABLES}
     )
-    validate_business_rules(snapshot, validate_keys(snapshot))
+    indexes = validate_keys(snapshot)
+    validate_labels(snapshot)
+    validate_business_rules(snapshot, indexes)
     return snapshot

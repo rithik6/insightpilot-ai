@@ -13,9 +13,9 @@ The project uses Python 3.12, FastAPI, PostgreSQL 17, Redis/RQ, SQLAlchemy, Alem
 | Item | Current state |
 | --- | --- |
 | `main` | Repository foundation at `043256c` |
-| `development` | Phases 1 to 3 merged at `bb961ab` |
-| Current branch | `feature/metric-spec`, based on `development` |
-| Current feature work | Phase 4.1 metric specification and hand-calculated fixture |
+| `development` | Phases 1 to 3 and Phase 4.1 merged at `ce5f8ce` |
+| Current branch | `fix/import-text-labels`, based on `development` |
+| Current feature work | Importer checks for label spaces and letter case |
 | Generated CSVs | Local and ignored by Git under `data/generated/synthetic-v1/` |
 | Phase 3 status | Merged into `development` through pull request #10 |
 
@@ -110,7 +110,7 @@ The timing figures describe a disposable local database run and act as a future 
 
 ### 4.1 Metric specification
 
-The [metric specification](metrics.md) is on `feature/metric-spec`, pending review and merge.
+The [metric specification](metrics.md) merged into `development` at `ce5f8ce` through pull request #11.
 
 - Shared rules cover terms, UTC periods, dataset coverage, filters, dimensions, precision and display, result statuses, evidence records, and the read-only execution boundary.
 - Results use `OK`, `INVALID_RANGE` for malformed or out-of-coverage periods, `INSUFFICIENT_DATA` for valid periods without records to calculate from, and `NOT_APPLICABLE` for zero or negative denominators.
@@ -155,10 +155,7 @@ For metrics and import work, add focused fixture tests and a disposable PostgreS
 
 ### Immediate repository step
 
-Finish Phase 4.1 and the importer label fix before writing analytics code.
-
-1. Merge the [metric specification](metrics.md) pull request into `development` after CI passes.
-2. Make the importer reject text with leading or trailing spaces, and region, category, or segment labels that differ only by letter case. Do this on a separate `fix/` branch with tests.
+Phase 4.1 merged into `development` at `ce5f8ce` through pull request #11. Merge the importer label fix from `fix/import-text-labels` after review and CI. It rejects text with leading or trailing spaces, region, category, or segment labels that differ only by letter case, and gives clearer messages for formatted numbers such as `$1,200.00`.
 
 ### Next product brick — Phases 4.2 and 4.3
 
