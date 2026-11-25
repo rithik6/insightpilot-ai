@@ -56,6 +56,8 @@ The [PostgreSQL schema and migration plan](docs/schema.md) covers the 12 V1 tabl
 
 The [synthetic dataset guide](docs/synthetic-data.md) explains how to generate the six CSVs and investigate the planted sales, returns, and inventory scenarios.
 
+The [metric specification](docs/metrics.md) defines the 25 V1 analytics capabilities, their shared calculations, and the hand-calculated fixture that tests them.
+
 After applying migrations, `POST /api/v1/session` starts or resumes the anonymous session for the browser that holds its cookie. The default lifetime is 90 days and can be set with `INSIGHTPILOT_SESSION_LIFETIME_DAYS`. Staging and production use a secure cookie over HTTPS. Session history is tied to the browser profile that holds the unexpired cookie.
 
 Set `INSIGHTPILOT_ALLOWED_ORIGINS` to a JSON array of exact browser origins for HTTPS deployments or a custom Compose host port. Local development defaults to `http://localhost:8000` and `http://127.0.0.1:8000`. Session bootstrap and history deletion require a trusted `Origin`. The bootstrap response supplies the session-bound token to send as `X-CSRF-Token` when deleting history.

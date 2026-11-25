@@ -13,11 +13,11 @@ The project uses Python 3.12, FastAPI, PostgreSQL 17, Redis/RQ, SQLAlchemy, Alem
 | Item | Current state |
 | --- | --- |
 | `main` | Repository foundation at `043256c` |
-| `development` | Phase 1 and Phase 2 merged at `f9c0fd9` |
-| Current branch | `feature/synthetic-data`, based on `development` |
-| Current feature work | Phase 3 generator, validator, importer, query checks, documentation, and tests |
+| `development` | Phases 1 to 3 merged at `bb961ab` |
+| Current branch | `feature/metric-spec`, based on `development` |
+| Current feature work | Phase 4.1 metric specification and hand-calculated fixture |
 | Generated CSVs | Local and ignored by Git under `data/generated/synthetic-v1/` |
-| Phase 3 status | Implemented in the working tree, pending review, commit, pull request, and merge into `development` |
+| Phase 3 status | Merged into `development` through pull request #10 |
 
 Use a focused `feature/` or `fix/` branch for each brick. Run the checks in this document, review the diff for secrets and generated files, then commit, push, open a pull request into `development`, and merge after CI passes. Promote `development` to `main` after staging validation and release approval.
 
@@ -47,7 +47,7 @@ Business data is stored in `customers`, `products`, `orders`, `order_items`, `re
 
 ## Phase 3 — Synthetic data and controlled import
 
-Phase 3 is ready on `feature/synthetic-data`. The code has not yet been committed or merged.
+Phase 3 merged into `development` at `bb961ab` through pull request #10. CI passed on the pull request and again on `development` after the merge.
 
 ### Reviewed synthetic snapshot
 
@@ -106,9 +106,22 @@ docker compose run --rm --build \
 
 The timing figures describe a disposable local database run and act as a future comparison baseline.
 
+## Phase 4 — Analytics foundation
+
+### 4.1 Metric specification
+
+The [metric specification](metrics.md) is on `feature/metric-spec`, pending review and merge.
+
+- Shared rules cover terms, UTC periods, dataset coverage, filters, dimensions, rounding, result statuses, evidence records, and the read-only execution boundary.
+- Base calculations B1 for sale totals and B2 for approved return totals include reference SQL. B3 for customer purchases and B4 for inventory days are outlined for later metrics.
+- Metrics 01 to 10 are fully specified. Metrics 11 to 25 have planned definitions, dependencies, and the questions Phase 9.1 must settle.
+- The dependency graph has no cycles because each metric depends only on base calculations or lower-numbered metrics.
+- The `tests/fixtures/metrics-v1/` CSVs pass the snapshot validator. Their expected values were calculated by hand and reproduced by running the B1 and B2 SQL on disposable PostgreSQL 17.
+- Six decisions to confirm are listed at the end of the specification.
+
 ## Current application scope
 
-The foundation, PostgreSQL schema, anonymous sessions, and controlled importer exist. The public application does not yet have the Phase 4 analytics engine, LangGraph investigator, chat UI, chart rendering, or PDF generation.
+The foundation, PostgreSQL schema, anonymous sessions, controlled importer, and metric specification exist. The public application does not yet have the analytics engine, LangGraph investigator, chat UI, chart rendering, or PDF generation.
 
 The importer is a controlled developer operation. Browser users cannot upload or replace business data through FastAPI.
 
@@ -139,31 +152,22 @@ For metrics and import work, add focused fixture tests and a disposable PostgreS
 
 ### Immediate repository step
 
-Finish Phase 3 before beginning analytics.
+Finish Phase 4.1 before writing analytics code.
 
-1. Run the verification checklist.
-2. Review the diff and keep `data/generated/`, review workbooks, CSV archives, local `.env` files, and logs out of Git.
-3. Commit the Phase 3 source code and documentation on `feature/synthetic-data`.
-4. Push the branch, open a pull request into `development`, wait for CI, and merge it.
+1. Review the [metric specification](metrics.md) and confirm or change its listed decisions.
+2. Run the verification checklist and review the diff for secrets and generated files.
+3. Commit on `feature/metric-spec`, push, open a pull request into `development`, wait for CI, and merge it.
 
-### Next product brick — Phase 4.1
+### Next product brick — Phases 4.2 and 4.3
 
-Begin the metric specification after Phase 3 merges. Create one document covering the exact 25 metrics in the master plan and hand-calculated tiny fixture cases. Start with the first ten.
+Implement the shared read-only calculations from the specification.
 
-| Number | Metric | Category |
-| ---: | --- | --- |
-| 1 | Gross sales | Revenue |
-| 2 | Net sales | Revenue |
-| 3 | Average order value | Revenue |
-| 4 | Revenue growth | Revenue |
-| 5 | Revenue by region | Revenue |
-| 6 | Cost of goods sold adjusted for approved returns | Profitability |
-| 7 | Gross profit | Profitability |
-| 8 | Gross margin | Profitability |
-| 9 | Discount rate | Profitability |
-| 10 | Refund losses | Profitability |
+- B1 sale totals and B2 approved return totals as parameterized SQL with the allowlisted group keys
+- Dataset coverage, zero-filled groups, and the `OK`, `NOT_APPLICABLE`, and `INSUFFICIENT_DATA` statuses
+- Derived values for net sales, adjusted COGS, gross profit, discounted sales, gross margin, discount rate, and period comparison
+- `Decimal` arithmetic with the documented rounding
 
-For every metric, define version, formula, source tables, valid filters and dimensions, date policy, unit, evidence, missing-data behavior, zero-denominator behavior, and known-value fixture. Reuse the existing UTC and qualifying-order rules. The next coding brick is Phase 4.2 and 4.3, shared read-only SQL calculations for sales, discounts, refunds, COGS, net sales, gross profit, margin, and comparisons.
+Test against `tests/fixtures/metrics-v1/` using the expected tables in the specification, including a disposable PostgreSQL test. Phase 4.4 then registers metrics 01 to 10 and their evidence records.
 
 ## Remaining roadmap
 
